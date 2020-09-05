@@ -108,7 +108,9 @@ WindowController.prototype.handleEvent = function(event) {
       if (data.id !== this.id) {
         this[data.type](data);
       }
-    } catch (error) {}
+    } catch (error) {
+      // Ignore error
+    }
   }
 };
 
@@ -134,7 +136,7 @@ WindowController.prototype.bye = function(event) {
   this.check();
 };
 
-WindowController.prototype.check = function(event) {
+WindowController.prototype.check = function(_event) {
   var now = +new Date(),
     takeMaster = true,
     id;
@@ -164,6 +166,7 @@ WindowController.prototype.broadcast = function(type, data) {
   try {
     localStorage.setItem("broadcast", JSON.stringify(event));
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.log(error);
   }
 };
@@ -175,7 +178,7 @@ export function colorHash(str) {
   }
   let colour = "#";
   for (let i = 0; i < 3; i++) {
-    let value = (hash >> (i * 8)) & 0xff;
+    let value = (hash >> (i * 4)) & 0xff;
     colour += ("00" + value.toString(16)).substr(-2);
   }
   return colour;
@@ -255,4 +258,39 @@ export function copyToClipboard(event, selector) {
   setTimeout(function() {
     $(event.target).tooltip("hide");
   }, 1500);
+}
+
+export function makeSortableTables() {
+  $("th.sort-col").append(` <i class="fas fa-sort"></i>`);
+  $("th.sort-col").click(function() {
+    var table = $(this)
+      .parents("table")
+      .eq(0);
+    var rows = table
+      .find("tr:gt(0)")
+      .toArray()
+      .sort(comparer($(this).index()));
+    this.asc = !this.asc;
+    if (!this.asc) {
+      rows = rows.reverse();
+    }
+    for (var i = 0; i < rows.length; i++) {
+      table.append(rows[i]);
+    }
+  });
+  function comparer(index) {
+    return function(a, b) {
+      var valA = getCellValue(a, index),
+        valB = getCellValue(b, index);
+      return $.isNumeric(valA) && $.isNumeric(valB)
+        ? valA - valB
+        : valA.toString().localeCompare(valB);
+    };
+  }
+  function getCellValue(row, index) {
+    return $(row)
+      .children("td")
+      .eq(index)
+      .text();
+  }
 }

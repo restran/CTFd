@@ -1,5 +1,6 @@
 from flask import Blueprint, redirect, render_template, request, url_for
 
+from CTFd.cache import clear_team_session, clear_user_session
 from CTFd.models import Teams, db
 from CTFd.utils import config, get_config
 from CTFd.utils.crypto import verify_password
@@ -19,25 +20,34 @@ teams = Blueprint("teams", __name__)
 @check_account_visibility
 @require_team_mode
 def listing():
-    page = abs(request.args.get("page", 1, type=int))
-    results_per_page = 50
-    page_start = results_per_page * (page - 1)
-    page_end = results_per_page * (page - 1) + results_per_page
+    q = request.args.get("q")
+    field = request.args.get("field", "name")
+    filters = []
 
-    # TODO: Should teams confirm emails?
-    # if get_config('verify_emails'):
-    #     count = Teams.query.filter_by(verified=True, banned=False).count()
-    #     teams = Teams.query.filter_by(verified=True, banned=False).slice(page_start, page_end).all()
-    # else:
-    count = Teams.query.filter_by(hidden=False, banned=False).count()
+    if field not in ("name", "affiliation", "website"):
+        field = "name"
+
+    if q:
+        filters.append(getattr(Teams, field).like("%{}%".format(q)))
+
     teams = (
         Teams.query.filter_by(hidden=False, banned=False)
-        .slice(page_start, page_end)
-        .all()
+        .filter(*filters)
+        .order_by(Teams.id.asc())
+        .paginate(per_page=50)
     )
 
-    pages = int(count / results_per_page) + (count % results_per_page > 0)
-    return render_template("teams/teams.html", teams=teams, pages=pages, curr_page=page)
+    args = dict(request.args)
+    args.pop("page", 1)
+
+    return render_template(
+        "teams/teams.html",
+        teams=teams,
+        prev_page=url_for(request.endpoint, page=teams.prev_num, **args),
+        next_page=url_for(request.endpoint, page=teams.next_num, **args),
+        q=q,
+        field=field,
+    )
 
 
 @teams.route("/teams/join", methods=["GET", "POST"])
@@ -63,7 +73,6 @@ def join():
         passphrase = request.form.get("password", "").strip()
 
         team = Teams.query.filter_by(name=teamname).first()
-        user = get_current_user()
 
         if team and verify_password(passphrase, team.password):
             team_size_limit = get_config("team_size", default=0)
@@ -77,12 +86,16 @@ def join():
                     "teams/join_team.html", infos=infos, errors=errors
                 )
 
+            user = get_current_user()
             user.team_id = team.id
             db.session.commit()
 
             if len(team.members) == 1:
                 team.captain_id = user.id
                 db.session.commit()
+
+            clear_user_session(user_id=user.id)
+            clear_team_session(team_id=team.id)
 
             return redirect(url_for("challenges.listing"))
         else:
@@ -130,6 +143,10 @@ def new():
 
         user.team_id = team.id
         db.session.commit()
+
+        clear_user_session(user_id=user.id)
+        clear_team_session(team_id=team.id)
+
         return redirect(url_for("challenges.listing"))
 
 
@@ -137,6 +154,9 @@ def new():
 @authed_only
 @require_team_mode
 def private():
+    infos = get_infos()
+    errors = get_errors()
+
     user = get_current_user()
     if not user.team_id:
         return render_template("teams/team_enrollment.html")
@@ -150,6 +170,9 @@ def private():
     place = team.place
     score = team.score
 
+    if config.is_scoreboard_frozen():
+        infos.append("Scoreboard has been frozen")
+
     return render_template(
         "teams/private.html",
         solves=solves,
@@ -159,6 +182,8 @@ def private():
         score=score,
         place=place,
         score_frozen=config.is_scoreboard_frozen(),
+        infos=infos,
+        errors=errors,
     )
 
 
@@ -167,6 +192,7 @@ def private():
 @check_score_visibility
 @require_team_mode
 def public(team_id):
+    infos = get_infos()
     errors = get_errors()
     team = Teams.query.filter_by(id=team_id, banned=False, hidden=False).first_or_404()
     solves = team.get_solves()
@@ -178,6 +204,9 @@ def public(team_id):
     if errors:
         return render_template("teams/public.html", team=team, errors=errors)
 
+    if config.is_scoreboard_frozen():
+        infos.append("Scoreboard has been frozen")
+
     return render_template(
         "teams/public.html",
         solves=solves,
@@ -186,4 +215,6 @@ def public(team_id):
         score=score,
         place=place,
         score_frozen=config.is_scoreboard_frozen(),
+        infos=infos,
+        errors=errors,
     )

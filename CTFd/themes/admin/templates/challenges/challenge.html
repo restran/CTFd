@@ -19,7 +19,7 @@
 			<h2 class="text-center">{{ challenge.type }}</h2>
 			{% set badge_state = 'badge-danger' if challenge.state == 'hidden' else 'badge-success' %}
 			<h5>
-				<span class="badge {{ badge_state }}">
+				<span class="badge {{ badge_state }} challenge-state">
 					{{ challenge.state }}
 				</span>
 			</h5>
@@ -28,6 +28,10 @@
 				<a class="preview-challenge">
 					<i class="btn-fa fas fa-file-alt fa-2x px-2" data-toggle="tooltip" data-placement="top"
 					   title="Preview Challenge"></i>
+				</a>
+				<a class="no-decoration" href="{{ url_for('admin.submissions_listing', submission_type='correct', field='challenge_id', q=challenge.id) }}">
+					<i class="btn-fa fas fa-tasks fa-2x px-2" data-toggle="tooltip" data-placement="top"
+					   title="Correct Submissions"></i>
 				</a>
 				<a class="delete-challenge">
 					<i class="btn-fa fas fa-trash-alt fa-2x px-2" data-toggle="tooltip" data-placement="top"
@@ -118,6 +122,6 @@
         var CHALLENGE_ID = {{ challenge.id }};
         var CHALLENGE_NAME = {{ challenge.name | tojson }};
 	</script>
-	<script defer src="{{ url_for('views.themes', theme='admin', path='js/plotly.bundle.js') }}"></script>
+	<script defer src="{{ url_for('views.themes', theme='admin', path='js/echarts.bundle.js') }}"></script>
 	<script defer src="{{ request.script_root }}{{ update_script }}"></script>
 {% endblock %}
